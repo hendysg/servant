@@ -821,7 +821,8 @@ instance (HasContextEntry context (NamedContext name subContext), HasServer subA
 -- Erroring instance for 'HasServer' when a combinator is not fully applied
 instance TypeError (PartialApplication HasServer arr) => HasServer ((arr :: a -> b) :> sub) context
   where
-    type ServerT (arr :> sub) _ = TypeError (PartialApplication HasServer arr)
+    -- type ServerT (arr :> sub) m = TypeError (PartialApplication HasServer arr)
+    type ServerT (arr :> sub) m = TypeError ('Text "No instance exists for HasServer ((a -> b) :> ...) because (a -> b) expects more arguments. In other words, the combinator is not fully applied (Or something like that. This error message is my best effort to help you because I couldn't get the original code that should've programatically generated the error message to compile with ghc 9.2.4. Sorry!)")
     route = error "unreachable"
     hoistServerWithContext _ _ _ _ = error "unreachable"
 
