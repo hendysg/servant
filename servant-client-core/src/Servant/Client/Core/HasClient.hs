@@ -33,9 +33,7 @@ import           Control.Arrow
 import           Control.Monad
                  (unless)
 import qualified Data.ByteString as BS
-import           Data.ByteString.Builder
-                 (toLazyByteString)
-import qualified Data.ByteString.Lazy                     as BL
+import qualified Data.ByteString.Lazy as BL
 import           Data.Either
                  (partitionEithers)
 import           Data.Constraint (Dict(..))
@@ -210,7 +208,7 @@ instance (KnownSymbol capture, ToHttpApiData a, HasClient m api)
     clientWithRoute pm (Proxy :: Proxy api)
                     (appendToPath p req)
 
-    where p = (toUrlPiece val)
+    where p = toEncodedUrlPiece val
 
   hoistClientMonad pm _ f cl = \a ->
     hoistClientMonad pm (Proxy :: Proxy api) f (cl a)
@@ -245,7 +243,7 @@ instance (KnownSymbol capture, ToHttpApiData a, HasClient m sublayout)
     clientWithRoute pm (Proxy :: Proxy sublayout)
                     (foldl' (flip appendToPath) req ps)
 
-    where ps = map (toUrlPiece) vals
+    where ps = map toEncodedUrlPiece vals
 
   hoistClientMonad pm _ f cl = \as ->
     hoistClientMonad pm (Proxy :: Proxy sublayout) f (cl as)
@@ -571,16 +569,13 @@ instance (KnownSymbol sym, ToHttpApiData a, HasClient m api, SBoolI (FoldRequire
       (Proxy :: Proxy mods) add (maybe req add) mparam
     where
       add :: a -> Request
-      add param = appendToQueryString pname (Just $ encodeQueryParam param) req
+      add param = appendToQueryString pname (Just $ encodeQueryParamValue param) req
 
       pname :: Text
       pname  = pack $ symbolVal (Proxy :: Proxy sym)
 
   hoistClientMonad pm _ f cl = \arg ->
     hoistClientMonad pm (Proxy :: Proxy api) f (cl arg)
-
-encodeQueryParam :: ToHttpApiData a => a  -> BS.ByteString
-encodeQueryParam = BL.toStrict . toLazyByteString . toEncodedUrlPiece
 
 -- | If you use a 'QueryParams' in one of your endpoints in your API,
 -- the corresponding querying function will automatically take
@@ -623,7 +618,7 @@ instance (KnownSymbol sym, ToHttpApiData a, HasClient m api)
                     )
 
     where pname = pack $ symbolVal (Proxy :: Proxy sym)
-          paramlist' = map (Just . encodeQueryParam) paramlist
+          paramlist' = map (Just . encodeQueryParamValue) paramlist
 
   hoistClientMonad pm _ f cl = \as ->
     hoistClientMonad pm (Proxy :: Proxy api) f (cl as)
@@ -745,7 +740,7 @@ instance (KnownSymbol path, HasClient m api) => HasClient m (path :> api) where
      clientWithRoute pm (Proxy :: Proxy api)
                      (appendToPath p req)
 
-    where p = pack $ symbolVal (Proxy :: Proxy path)
+    where p = toEncodedUrlPiece $ pack $ symbolVal (Proxy :: Proxy path)
 
   hoistClientMonad pm _ f cl = hoistClientMonad pm (Proxy :: Proxy api) f cl
 
@@ -879,7 +874,7 @@ infixl 2 /:
 --
 -- Example:
 --
--- @@
+-- @
 -- type Api = NamedRoutes RootApi
 --
 -- data RootApi mode = RootApi
@@ -900,7 +895,7 @@ infixl 2 /:
 --
 -- endpointClient :: ClientM Person
 -- endpointClient = client // subApi // endpoint
--- @@
+-- @
 (//) :: a -> (a -> b) -> b
 x // f = f x
 
@@ -911,7 +906,7 @@ x // f = f x
 --
 -- Example:
 --
--- @@
+-- @
 -- type Api = NamedRoutes RootApi
 --
 -- data RootApi mode = RootApi
@@ -936,7 +931,7 @@ x // f = f x
 --
 -- endpointClient :: ClientM Person
 -- endpointClient = client // subApi /: "foobar123" // endpoint
--- @@
+-- @
 (/:) :: (a -> b -> c) -> b -> a -> c
 (/:) = flip
 

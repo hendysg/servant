@@ -24,7 +24,7 @@ import           Control.Monad
 import           Control.Monad.Base
                  (MonadBase (..))
 import           Control.Monad.Catch
-                 (MonadCatch, MonadThrow)
+                 (MonadCatch, MonadThrow, MonadMask)
 import           Control.Monad.Error.Class
                  (MonadError (..))
 import           Control.Monad.IO.Class
@@ -80,7 +80,7 @@ data ClientEnv
   { manager :: Client.Manager
   , baseUrl :: BaseUrl
   , cookieJar :: Maybe (TVar Client.CookieJar)
-  , makeClientRequest :: BaseUrl -> Request -> Client.Request
+  , makeClientRequest :: BaseUrl -> Request -> IO Client.Request
   -- ^ this function can be used to customize the creation of @http-client@ requests from @servant@ requests. Default value: 'defaultMakeClientRequest'
   --   Note that:
   --      1. 'makeClientRequest' exists to allow overriding operational semantics e.g. 'responseTimeout' per request,
@@ -136,7 +136,7 @@ newtype ClientM a = ClientM
   { unClientM :: ReaderT ClientEnv (ExceptT ClientError IO) a }
   deriving ( Functor, Applicative, Monad, MonadIO, Generic
            , MonadReader ClientEnv, MonadError ClientError, MonadThrow
-           , MonadCatch)
+           , MonadCatch, MonadMask)
 
 instance MonadBase IO ClientM where
   liftBase = ClientM . liftBase
@@ -162,7 +162,7 @@ runClientM cm env = runExceptT $ flip runReaderT env $ unClientM cm
 performRequest :: Maybe [Status] -> Request -> ClientM Response
 performRequest acceptStatus req = do
   ClientEnv m burl cookieJar' createClientRequest <- ask
-  let clientRequest = createClientRequest burl req
+  clientRequest <- liftIO $ createClientRequest burl req
   request <- case cookieJar' of
     Nothing -> pure clientRequest
     Just cj -> liftIO $ do
@@ -229,8 +229,8 @@ clientResponseToResponse f r = Response
 -- | Create a @http-client@ 'Client.Request' from a @servant@ 'Request'
 --    The 'Client.host', 'Client.path' and 'Client.port' fields are extracted from the 'BaseUrl'
 --    otherwise the body, headers and query string are derived from the @servant@ 'Request'
-defaultMakeClientRequest :: BaseUrl -> Request -> Client.Request
-defaultMakeClientRequest burl r = Client.defaultRequest
+defaultMakeClientRequest :: BaseUrl -> Request -> IO Client.Request
+defaultMakeClientRequest burl r = return Client.defaultRequest
     { Client.method = requestMethod r
     , Client.host = fromString $ baseUrlHost burl
     , Client.port = baseUrlPort burl
@@ -246,7 +246,7 @@ defaultMakeClientRequest burl r = Client.defaultRequest
   where
     -- Content-Type and Accept are specified by requestBody and requestAccept
     headers = filter (\(h, _) -> h /= "Accept" && h /= "Content-Type") $
-        toList $requestHeaders r
+        toList $ requestHeaders r
 
     acceptHdr
         | null hs   = Nothing
@@ -289,7 +289,8 @@ defaultMakeClientRequest burl r = Client.defaultRequest
         Https -> True
 
     -- Query string builder which does not do any encoding
-    buildQueryString = ("?" <>) . foldl' addQueryParam mempty
+    buildQueryString [] = mempty
+    buildQueryString qps = "?" <> foldl' addQueryParam mempty qps
 
     addQueryParam qs (k, v) =
           qs <> (if BS.null qs then mempty else "&") <> urlEncode True k <> foldMap ("=" <>) v

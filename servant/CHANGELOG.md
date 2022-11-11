@@ -2,6 +2,11 @@
 
 Package versions follow the [Package Versioning Policy](https://pvp.haskell.org/): in A.B.C, bumps to either A or B represent major versions.
 
+0.19.1
+------
+
+Compatibility with GHC 9.4, see [PR #1592](https://github.com/haskell-servant/servant/pull/1592).
+
 0.19
 ----
 
@@ -48,11 +53,11 @@ Package versions follow the [Package Versioning Policy](https://pvp.haskell.org/
   rootClient :: RootApi (AsClientT ClientM)
   rootClient = client (Proxy @API)
 
-  hello :: String -> ClientM String
-  hello name = rootClient // hello /: name
+  helloClient :: String -> ClientM String
+  helloClient name = rootClient // hello /: name
 
   endpointClient :: ClientM Person
-  endpointClient = client // subApi /: "foobar123" // endpoint
+  endpointClient = rootClient // subApi /: "foobar123" // endpoint
 
   type Api = NamedRoutes RootApi
 

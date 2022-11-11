@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveDataTypeable    #-}
 {-# LANGUAGE FlexibleContexts      #-}
@@ -41,7 +42,7 @@ import qualified Data.ByteString                            as B
 import qualified Data.ByteString.Builder                    as BB
 import qualified Data.ByteString.Char8                      as BC8
 import qualified Data.ByteString.Lazy                       as BL
-import           Data.Constraint (Dict(..))
+import           Data.Constraint (Constraint, Dict(..))
 import           Data.Either
                  (partitionEithers)
 import           Data.Maybe
@@ -94,6 +95,8 @@ import           Servant.API.TypeErrors
 import           Web.HttpApiData
                  (FromHttpApiData, parseHeader, parseQueryParam, parseUrlPiece,
                  parseUrlPieces)
+import           Data.Kind
+                 (Type)
 
 import           Servant.Server.Internal.BasicAuth
 import           Servant.Server.Internal.Context
@@ -173,7 +176,7 @@ instance (HasServer a context, HasServer b context) => HasServer (a :<|> b) cont
 -- > server = getBook
 -- >   where getBook :: Text -> Handler Book
 -- >         getBook isbn = ...
-instance (KnownSymbol capture, FromHttpApiData a
+instance (KnownSymbol capture, FromHttpApiData a, Typeable a
          , HasServer api context, SBoolI (FoldLenient mods)
          , HasContextEntry (MkContextWithErrorFormatter context) ErrorFormatters
          )
@@ -185,7 +188,7 @@ instance (KnownSymbol capture, FromHttpApiData a
   hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
 
   route Proxy context d =
-    CaptureRouter $
+    CaptureRouter [hint] $
         route (Proxy :: Proxy api)
               context
               (addCapture d $ \ txt -> withRequest $ \ request ->
@@ -197,6 +200,7 @@ instance (KnownSymbol capture, FromHttpApiData a
     where
       rep = typeRep (Proxy :: Proxy Capture')
       formatError = urlParseErrorFormatter $ getContextEntry (mkContextWithErrorFormatter context)
+      hint = CaptureHint (T.pack $ symbolVal $ Proxy @capture) (typeRep (Proxy :: Proxy a))
 
 -- | If you use 'CaptureAll' in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a
@@ -215,7 +219,7 @@ instance (KnownSymbol capture, FromHttpApiData a
 -- > server = getSourceFile
 -- >   where getSourceFile :: [Text] -> Handler Book
 -- >         getSourceFile pathSegments = ...
-instance (KnownSymbol capture, FromHttpApiData a
+instance (KnownSymbol capture, FromHttpApiData a, Typeable a
          , HasServer api context
          , HasContextEntry (MkContextWithErrorFormatter context) ErrorFormatters
          )
@@ -227,7 +231,7 @@ instance (KnownSymbol capture, FromHttpApiData a
   hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
 
   route Proxy context d =
-    CaptureAllRouter $
+    CaptureAllRouter [hint] $
         route (Proxy :: Proxy api)
               context
               (addCapture d $ \ txts -> withRequest $ \ request ->
@@ -238,6 +242,7 @@ instance (KnownSymbol capture, FromHttpApiData a
     where
       rep = typeRep (Proxy :: Proxy CaptureAll)
       formatError = urlParseErrorFormatter $ getContextEntry (mkContextWithErrorFormatter context)
+      hint = CaptureHint (T.pack $ symbolVal $ Proxy @capture) (typeRep (Proxy :: Proxy [a]))
 
 allowedMethodHead :: Method -> Request -> Bool
 allowedMethodHead method request = method == methodGet && requestMethod request == methodHead
@@ -819,10 +824,13 @@ instance (HasContextEntry context (NamedContext name subContext), HasServer subA
 -------------------------------------------------------------------------------
 
 -- Erroring instance for 'HasServer' when a combinator is not fully applied
-instance TypeError (PartialApplication HasServer arr) => HasServer ((arr :: a -> b) :> sub) context
+instance TypeError (PartialApplication 
+#if __GLASGOW_HASKELL__ >= 904
+                    @(Type -> [Type] -> Constraint) 
+#endif
+                    HasServer arr) => HasServer ((arr :: a -> b) :> sub) context
   where
-    -- type ServerT (arr :> sub) m = TypeError (PartialApplication HasServer arr)
-    type ServerT (arr :> sub) m = TypeError ('Text "No instance exists for HasServer ((a -> b) :> ...) because (a -> b) expects more arguments. In other words, the combinator is not fully applied (Or something like that. This error message is my best effort to help you because I couldn't get the original code that should've programatically generated the error message to compile with ghc 9.2.4. Sorry!)")
+    type ServerT (arr :> sub) _ = TypeError (PartialApplication (HasServer :: * -> [*] -> Constraint) arr)
     route = error "unreachable"
     hoistServerWithContext _ _ _ _ = error "unreachable"
 
@@ -864,7 +872,11 @@ type HasServerArrowTypeError a b =
 -- XXX: This omits the @context@ parameter, e.g.:
 --
 -- "There is no instance for HasServer (Bool :> …)". Do we care ?
-instance {-# OVERLAPPABLE #-} TypeError (NoInstanceForSub HasServer ty) => HasServer (ty :> sub) context
+instance {-# OVERLAPPABLE #-} TypeError (NoInstanceForSub 
+#if __GLASGOW_HASKELL__ >= 904
+                                         @(Type -> [Type] -> Constraint) 
+#endif
+                                         HasServer ty) => HasServer (ty :> sub) context
 
 instance {-# OVERLAPPABLE #-} TypeError (NoInstanceFor (HasServer api context)) => HasServer api context
 

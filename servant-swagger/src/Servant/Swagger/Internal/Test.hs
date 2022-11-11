@@ -29,10 +29,12 @@ import           Servant.Swagger.Internal.TypeLevel
 -- >>> import Control.Applicative
 -- >>> import GHC.Generics
 -- >>> import Test.QuickCheck
+-- >>> import System.Environment (setEnv)
 -- >>> :set -XDeriveGeneric
 -- >>> :set -XGeneralizedNewtypeDeriving
 -- >>> :set -XDataKinds
 -- >>> :set -XTypeOperators
+-- >>> setEnv "HSPEC_COLOR" "no"
 
 -- | Verify that every type used with @'JSON'@ content type in a servant API
 -- has compatible @'ToJSON'@ and @'ToSchema'@ instances using @'validateToJSON'@.
@@ -53,10 +55,10 @@ import           Servant.Swagger.Internal.TypeLevel
 --
 -- >>> hspec $ context "ToJSON matches ToSchema" $ validateEveryToJSON (Proxy :: Proxy UserAPI)
 -- <BLANKLINE>
--- ToJSON matches ToSchema
---   User
+-- ToJSON matches ToSchema...
+--   User...
 -- ...
---   UserId
+--   UserId...
 -- ...
 -- Finished in ... seconds
 -- 2 examples, 0 failures
@@ -118,11 +120,11 @@ validateEveryToJSONWithPatternChecker checker _ = props
 -- :}
 -- <BLANKLINE>
 -- read . show == id
---   Bool
+--   Bool...
 -- ...
---   Int
+--   Int...
 -- ...
---   [Char]
+--   [Char]...
 -- ...
 -- Finished in ... seconds
 -- 3 examples, 0 failures
